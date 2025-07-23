@@ -1,0 +1,1410 @@
+openapi: 3.0.3
+info:
+  title: Better Stack Telemetry API
+  description: |
+    Better Stack Telemetry (formerly Logtail) is an OpenTelemetry-native infrastructure monitoring platform 
+    that provides log management, metrics, and tracing capabilities. This API allows you to programmatically 
+    create sources and ingest log data.
+    
+    Key Features:
+    - Log collection and management
+    - Real-time log ingestion via HTTP
+    - OpenTelemetry integration for logs and metrics
+    - Source and source group management
+    - Data transformation capabilities
+    - Custom metrics creation and management
+  version: 1.0.0
+  contact:
+    email: hello@betterstack.com
+  license:
+    name: Better Stack Terms of Service
+    url: https://betterstack.com/terms
+servers:
+  - url: https://telemetry.betterstack.com/api/v1
+    description: Better Stack Telemetry API Server
+  - url: https://telemetry.betterstack.com/api/v2
+    description: Better Stack Telemetry API Server v2
+  - url: https://{ingesting_host}
+    description: Log Ingestion Endpoint
+    variables:
+      ingesting_host:
+        default: logs.betterstack.com
+        description: Dynamic ingesting host provided when creating a source
+  - url: https://in-otel.logs.betterstack.com:443
+    description: OpenTelemetry Logs Ingestion Endpoint
+  - url: https://in-otel.logs.betterstack.com/metrics
+    description: OpenTelemetry Metrics Ingestion Endpoint
+
+security:
+  - BearerAuth: []
+
+paths:
+  /sources:
+    get:
+      summary: List all sources
+      description: |
+        Retrieves a paginated list of all log sources in your Better Stack Telemetry account.
+        Results are paginated with links for navigation.
+      operationId: listSources
+      tags:
+        - Sources
+      parameters:
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: List of sources retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Create a new source
+      description: |
+        Creates a new log source in Better Stack Telemetry. A source is a configuration 
+        that defines how logs are collected and processed from a specific platform or service.
+      operationId: createSource
+      tags:
+        - Sources
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSourceRequest'
+            examples:
+              http_source:
+                summary: Create HTTP source
+                value:
+                  name: "My HTTP API logs"
+                  platform: "http"
+                  data_region: "us_east"
+              nginx_source:
+                summary: Create NGINX source
+                value:
+                  name: "Production NGINX"
+                  platform: "nginx"
+                  logs_retention: 30
+      responses:
+        '200':
+          description: Source created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Source'
+              examples:
+                created_source:
+                  summary: Successfully created source
+                  value:
+                    id: "12345"
+                    name: "My HTTP API logs"
+                    platform: "http"
+                    token: "source_token_here"
+                    ingesting_host: "logs.betterstack.com"
+                    created_at: "2025-01-15T10:30:00Z"
+                    updated_at: "2025-01-15T10:30:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /sources/{source_id}:
+    get:
+      summary: Get a single source
+      description: Retrieves detailed information about a specific source.
+      operationId: getSource
+      tags:
+        - Sources
+      parameters:
+        - name: source_id
+          in: path
+          description: The ID of the source to retrieve
+          required: true
+          schema:
+            type: string
+            example: "src_12345abcdef"
+      responses:
+        '200':
+          description: Source retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Source'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Source not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                not_found:
+                  summary: Source not found
+                  value:
+                    error: "Source not found"
+    patch:
+      summary: Update a source
+      description: |
+        Updates an existing source configuration. All parameters are optional - only provide the fields you want to update.
+      operationId: updateSource
+      tags:
+        - Sources
+      parameters:
+        - name: source_id
+          in: path
+          description: The ID of the source to update
+          required: true
+          schema:
+            type: string
+            example: "src_12345abcdef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSourceRequest'
+            examples:
+              update_name:
+                summary: Update source name
+                value:
+                  name: "Updated Production Logs"
+              pause_ingestion:
+                summary: Pause log ingestion
+                value:
+                  ingesting_paused: true
+              update_retention:
+                summary: Update retention settings
+                value:
+                  logs_retention: 60
+                  metrics_retention: 180
+      responses:
+        '200':
+          description: Source updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Source'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Source not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      summary: Delete a source
+      description: |
+        Permanently deletes a source and all associated data. This action cannot be undone.
+      operationId: deleteSource
+      tags:
+        - Sources
+      parameters:
+        - name: source_id
+          in: path
+          description: The ID of the source to delete
+          required: true
+          schema:
+            type: string
+            example: "src_12345abcdef"
+      responses:
+        '204':
+          description: Source deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Source not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                not_found:
+                  summary: Source not found
+                  value:
+                    error: "Source not found"
+
+  /source-groups:
+    get:
+      summary: List all source groups
+      description: |
+        Retrieves a paginated list of all source groups in your Better Stack Telemetry account.
+        Source groups help organize multiple sources for easier management.
+      operationId: listSourceGroups
+      tags:
+        - Source Groups
+      parameters:
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: List of source groups retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceGroupListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Create a new source group
+      description: |
+        Creates a new source group to organize multiple sources. Source groups help with managing 
+        and organizing related sources together.
+      operationId: createSourceGroup
+      tags:
+        - Source Groups
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSourceGroupRequest'
+            examples:
+              basic_group:
+                summary: Create basic source group
+                value:
+                  name: "Production Sources"
+              with_team:
+                summary: Create source group with team
+                value:
+                  name: "API Services"
+                  team_name: "backend-team"
+                  sort_index: 1
+      responses:
+        '200':
+          description: Source group created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceGroup'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /source-groups/{source_group_id}:
+    get:
+      summary: Get a single source group
+      description: Retrieves detailed information about a specific source group.
+      operationId: getSourceGroup
+      tags:
+        - Source Groups
+      parameters:
+        - name: source_group_id
+          in: path
+          description: The ID of the source group to retrieve
+          required: true
+          schema:
+            type: string
+            example: "grp_12345abcdef"
+      responses:
+        '200':
+          description: Source group retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceGroup'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Source group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                not_found:
+                  summary: Source group not found
+                  value:
+                    error: "Source group not found"
+    patch:
+      summary: Update a source group
+      description: |
+        Updates an existing source group. All parameters are optional - only provide the fields you want to update.
+      operationId: updateSourceGroup
+      tags:
+        - Source Groups
+      parameters:
+        - name: source_group_id
+          in: path
+          description: The ID of the source group to update
+          required: true
+          schema:
+            type: string
+            example: "grp_12345abcdef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSourceGroupRequest'
+            examples:
+              update_name:
+                summary: Update source group name
+                value:
+                  name: "Renamed Production Sources"
+              update_order:
+                summary: Update sort order
+                value:
+                  sort_index: 2
+      responses:
+        '200':
+          description: Source group updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceGroup'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Source group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      summary: Delete a source group
+      description: |
+        Permanently deletes a source group. Sources within the group are not deleted but will be ungrouped.
+      operationId: deleteSourceGroup
+      tags:
+        - Source Groups
+      parameters:
+        - name: source_group_id
+          in: path
+          description: The ID of the source group to delete
+          required: true
+          schema:
+            type: string
+            example: "grp_12345abcdef"
+      responses:
+        '204':
+          description: Source group deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Source group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                not_found:
+                  summary: Source group not found
+                  value:
+                    error: "Source group not found"
+
+  /sources/{source_id}/metrics:
+    get:
+      summary: List metrics for a source
+      description: |
+        Retrieves a paginated list of all metrics available for a specific source.
+        This endpoint uses the v2 API and returns metrics with their aggregations and SQL expressions.
+      operationId: listSourceMetrics
+      tags:
+        - Metrics
+      servers:
+        - url: https://telemetry.betterstack.com/api/v2
+          description: Better Stack Telemetry API Server v2
+      parameters:
+        - name: source_id
+          in: path
+          description: The ID of the source to retrieve metrics for
+          required: true
+          schema:
+            type: string
+            example: "src_12345abcdef"
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: List of metrics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Source not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                source_not_found:
+                  summary: Source not found
+                  value:
+                    error: "Source not found"
+    post:
+      summary: Create a custom metric
+      description: |
+        Creates a new custom metric for a source. Metrics are calculated based on SQL expressions 
+        applied to your log data. This endpoint uses the v2 API.
+      operationId: createMetric
+      tags:
+        - Metrics
+      servers:
+        - url: https://telemetry.betterstack.com/api/v2
+          description: Better Stack Telemetry API Server v2
+      parameters:
+        - name: source_id
+          in: path
+          description: The ID of the source to create the metric for
+          required: true
+          schema:
+            type: string
+            example: "src_12345abcdef"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMetricRequest'
+            examples:
+              response_time_metric:
+                summary: Create response time metric
+                value:
+                  name: "average_response_time"
+                  sql_expression: "AVG(response_time_ms)"
+                  type: "float64_delta"
+                  aggregations: ["avg", "min", "max", "p95", "p99"]
+              error_count_metric:
+                summary: Create error count metric
+                value:
+                  name: "error_count"
+                  sql_expression: "COUNT(*) WHERE level = 'error'"
+                  type: "int64_delta"
+                  aggregations: ["sum"]
+      responses:
+        '200':
+          description: Metric created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Metric'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Source not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /sources/{source_id}/metrics/{metric_id}:
+    delete:
+      summary: Delete a metric
+      description: |
+        Permanently deletes a custom metric from a source. This action cannot be undone.
+        This endpoint uses the v2 API.
+      operationId: deleteMetric
+      tags:
+        - Metrics
+      servers:
+        - url: https://telemetry.betterstack.com/api/v2
+          description: Better Stack Telemetry API Server v2
+      parameters:
+        - name: source_id
+          in: path
+          description: The ID of the source containing the metric
+          required: true
+          schema:
+            type: string
+            example: "src_12345abcdef"
+        - name: metric_id
+          in: path
+          description: The ID of the metric to delete
+          required: true
+          schema:
+            type: string
+            example: "mtr_98765fedcba"
+      responses:
+        '204':
+          description: Metric deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Metric or source not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                metric_not_found:
+                  summary: Metric not found
+                  value:
+                    error: "Metric not found"
+                source_not_found:
+                  summary: Source not found
+                  value:
+                    error: "Source not found"
+
+  /:
+    post:
+      summary: Ingest log data
+      description: |
+        Ingests log events into Better Stack Telemetry. Supports single events or batches of events.
+        Maximum request size is 10 MiB. Recommended individual log record size is under 100 KiB.
+      operationId: ingestLogs
+      tags:
+        - Log Ingestion
+      servers:
+        - url: https://{ingesting_host}
+          variables:
+            ingesting_host:
+              default: logs.betterstack.com
+              description: The ingesting host for your source
+      security:
+        - SourceTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/LogEvent'
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/LogEvent'
+            examples:
+              single_event:
+                summary: Single log event
+                value:
+                  message: "User login successful"
+                  level: "info"
+                  user_id: "12345"
+                  dt: "2025-01-15T10:30:00Z"
+              multiple_events:
+                summary: Multiple log events
+                value:
+                  - message: "Request started"
+                    level: "info"
+                    method: "GET"
+                    path: "/api/users"
+                  - message: "Request completed"
+                    level: "info"
+                    method: "GET"
+                    path: "/api/users"
+                    duration_ms: 150
+          application/msgpack:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/LogEvent'
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/LogEvent'
+          application/x-ndjson:
+            schema:
+              type: string
+              description: Newline-delimited JSON format with one log event per line
+      responses:
+        '202':
+          description: Log data accepted for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "accepted"
+        '403':
+          description: Invalid source token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid_token:
+                  summary: Invalid source token
+                  value:
+                    error: "Invalid source token"
+        '406':
+          description: Invalid request format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid_format:
+                  summary: Invalid JSON or MessagePack
+                  value:
+                    error: "Invalid JSON format"
+        '413':
+          description: Payload too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                payload_too_large:
+                  summary: Request exceeds 10 MiB limit
+                  value:
+                    error: "Payload too large"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: API token for team-level operations. Get from Better Stack → API tokens.
+    SourceTokenAuth:
+      type: http
+      scheme: bearer
+      description: Source-specific token for log ingestion. Obtained when creating a source.
+
+  schemas:
+    CreateSourceRequest:
+      type: object
+      required:
+        - name
+        - platform
+      properties:
+        name:
+          type: string
+          description: Human-readable name for the source
+          example: "Production API Logs"
+        platform:
+          type: string
+          description: The type of platform this source represents
+          enum:
+            - http
+            - nginx
+            - docker
+            - kubernetes
+            - apache
+            - mysql
+            - postgresql
+            - redis
+            - mongodb
+            - nodejs
+            - python
+            - ruby
+            - php
+            - go
+            - java
+            - dotnet
+          example: "http"
+        team_name:
+          type: string
+          description: Team name (required when using global API token)
+          example: "production-team"
+        ingesting_paused:
+          type: boolean
+          description: Whether to pause log ingestion for this source
+          default: false
+        source_group_id:
+          type: string
+          description: ID of the source group to assign this source to
+          example: "group_12345"
+        data_region:
+          type: string
+          description: Data storage region
+          enum:
+            - us_east
+            - eu_west
+            - ap_southeast
+          example: "us_east"
+        logs_retention:
+          type: integer
+          description: Log data retention period in days
+          minimum: 1
+          maximum: 365
+          example: 30
+        metrics_retention:
+          type: integer
+          description: Metrics retention period in days
+          minimum: 1
+          maximum: 365
+          example: 90
+        vrl_transformation:
+          type: string
+          description: Vector Remap Language (VRL) transformation rules
+          example: |
+            .timestamp = parse_timestamp!(.timestamp, format: "%Y-%m-%d %H:%M:%S")
+            .level = upcase(.level)
+        live_tail_pattern:
+          type: string
+          description: Pattern for live tail filtering
+          example: "error OR warn"
+        scrape_urls:
+          type: array
+          description: URLs to scrape for logs
+          items:
+            type: string
+            format: uri
+          example: ["https://example.com/logs", "https://api.example.com/status"]
+        scrape_frequency_secs:
+          type: integer
+          description: Frequency in seconds for URL scraping
+          minimum: 10
+          maximum: 3600
+          example: 60
+        scrape_request_headers:
+          type: object
+          description: Headers to include in scrape requests
+          additionalProperties:
+            type: string
+          example:
+            X-API-Key: "my-api-key"
+            Accept: "application/json"
+        scrape_request_basic_auth_user:
+          type: string
+          description: Basic auth username for scrape requests
+          example: "scraper-user"
+        scrape_request_basic_auth_password:
+          type: string
+          description: Basic auth password for scrape requests
+          format: password
+          example: "secure-password"
+
+    Source:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the source
+          example: "src_12345abcdef"
+        name:
+          type: string
+          description: Human-readable name of the source
+          example: "Production API Logs"
+        platform:
+          type: string
+          description: The platform type of the source
+          example: "http"
+        token:
+          type: string
+          description: Source token for log ingestion
+          example: "source_token_abcdef123456"
+        ingesting_host:
+          type: string
+          description: Host URL for log ingestion
+          example: "logs.betterstack.com"
+        ingesting_paused:
+          type: boolean
+          description: Whether log ingestion is paused
+          example: false
+        data_region:
+          type: string
+          description: Data storage region
+          example: "us_east"
+        logs_retention:
+          type: integer
+          description: Log retention period in days
+          example: 30
+        metrics_retention:
+          type: integer
+          description: Metrics retention period in days
+          example: 90
+        created_at:
+          type: string
+          format: date-time
+          description: Source creation timestamp
+          example: "2025-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Source last update timestamp
+          example: "2025-01-15T10:30:00Z"
+        vrl_transformation:
+          type: string
+          description: Vector Remap Language (VRL) transformation rules
+          example: |
+            .timestamp = parse_timestamp!(.timestamp, format: "%Y-%m-%d %H:%M:%S")
+            .level = upcase(.level)
+        live_tail_pattern:
+          type: string
+          description: Pattern for live tail filtering
+          example: "error OR warn"
+        scrape_urls:
+          type: array
+          description: URLs to scrape for logs
+          items:
+            type: string
+            format: uri
+          example: ["https://example.com/logs"]
+        scrape_frequency_secs:
+          type: integer
+          description: Frequency in seconds for URL scraping
+          example: 60
+
+    UpdateSourceRequest:
+      type: object
+      description: Request body for updating a source. All fields are optional.
+      properties:
+        name:
+          type: string
+          description: Human-readable name for the source
+          example: "Updated Production API Logs"
+        ingesting_paused:
+          type: boolean
+          description: Whether to pause log ingestion for this source
+          example: true
+        source_group_id:
+          type: string
+          description: ID of the source group to assign this source to
+          example: "group_12345"
+        live_tail_pattern:
+          type: string
+          description: Pattern for live tail filtering
+          example: "error OR warn"
+        logs_retention:
+          type: integer
+          description: Log data retention period in days
+          minimum: 1
+          maximum: 365
+          example: 60
+        metrics_retention:
+          type: integer
+          description: Metrics retention period in days
+          minimum: 1
+          maximum: 365
+          example: 180
+        vrl_transformation:
+          type: string
+          description: Vector Remap Language (VRL) transformation rules
+          example: |
+            .timestamp = parse_timestamp!(.timestamp, format: "%Y-%m-%d %H:%M:%S")
+            .level = upcase(.level)
+        scrape_urls:
+          type: array
+          description: URLs to scrape for logs
+          items:
+            type: string
+            format: uri
+          example: ["https://example.com/logs", "https://api.example.com/status"]
+        scrape_frequency_secs:
+          type: integer
+          description: Frequency in seconds for URL scraping
+          minimum: 10
+          maximum: 3600
+          example: 60
+        scrape_request_headers:
+          type: object
+          description: Headers to include in scrape requests
+          additionalProperties:
+            type: string
+          example:
+            X-API-Key: "my-api-key"
+            Accept: "application/json"
+        scrape_request_basic_auth_user:
+          type: string
+          description: Basic auth username for scrape requests
+          example: "scraper-user"
+        scrape_request_basic_auth_password:
+          type: string
+          description: Basic auth password for scrape requests
+          format: password
+          example: "secure-password"
+
+    CreateSourceGroupRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Human-readable name for the source group
+          example: "Production Sources"
+        team_name:
+          type: string
+          description: Team name (required when using global API token)
+          example: "backend-team"
+        sort_index:
+          type: integer
+          description: Sort order index for the source group
+          minimum: 0
+          example: 1
+
+    UpdateSourceGroupRequest:
+      type: object
+      description: Request body for updating a source group. All fields are optional.
+      properties:
+        name:
+          type: string
+          description: Human-readable name for the source group
+          example: "Renamed Production Sources"
+        sort_index:
+          type: integer
+          description: Sort order index for the source group
+          minimum: 0
+          example: 2
+
+    SourceGroup:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the source group
+          example: "grp_12345abcdef"
+        name:
+          type: string
+          description: Human-readable name of the source group
+          example: "Production Sources"
+        sort_index:
+          type: integer
+          description: Sort order index
+          example: 1
+        team_name:
+          type: string
+          description: Name of the team that owns this source group
+          example: "backend-team"
+        created_at:
+          type: string
+          format: date-time
+          description: Source group creation timestamp
+          example: "2025-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Source group last update timestamp
+          example: "2025-01-15T10:30:00Z"
+
+    CreateMetricRequest:
+      type: object
+      required:
+        - name
+        - sql_expression
+        - type
+      properties:
+        name:
+          type: string
+          description: Name of the metric
+          example: "average_response_time"
+        sql_expression:
+          type: string
+          description: SQL expression used to calculate this metric
+          example: "AVG(response_time_ms)"
+        type:
+          type: string
+          description: Data type of the metric
+          enum:
+            - string_low_cardinality
+            - int64_delta
+            - float64_delta
+            - datetime64_delta
+            - boolean
+          example: "float64_delta"
+        aggregations:
+          type: array
+          description: Available aggregation methods for this metric
+          items:
+            type: string
+            enum:
+              - sum
+              - avg
+              - min
+              - max
+              - count
+              - p50
+              - p75
+              - p90
+              - p95
+              - p99
+          example: ["avg", "min", "max", "p95", "p99"]
+        team_name:
+          type: string
+          description: Team name (required when using global API token)
+          example: "backend-team"
+
+    Metric:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the metric
+          example: "mtr_12345abcdef"
+        name:
+          type: string
+          description: Name of the metric
+          example: "average_response_time"
+        sql_expression:
+          type: string
+          description: SQL expression used to calculate this metric
+          example: "AVG(response_time_ms)"
+        type:
+          type: string
+          description: Data type of the metric
+          enum:
+            - string_low_cardinality
+            - int64_delta
+            - float64_delta
+            - datetime64_delta
+            - boolean
+          example: "float64_delta"
+        aggregations:
+          type: array
+          description: Available aggregation methods for this metric
+          items:
+            type: string
+          example: ["avg", "min", "max", "p95", "p99"]
+        created_at:
+          type: string
+          format: date-time
+          description: Metric creation timestamp
+          example: "2025-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Metric last update timestamp
+          example: "2025-01-15T10:30:00Z"
+
+    LogEvent:
+      type: object
+      description: |
+        A log event to be ingested. Can contain arbitrary fields. The 'dt' field is used for custom timestamps.
+      properties:
+        message:
+          type: string
+          description: The main log message
+          example: "User authentication successful"
+        level:
+          type: string
+          description: Log level (info, warn, error, debug, etc.)
+          example: "info"
+        dt:
+          oneOf:
+            - type: string
+              format: date-time
+              description: Timestamp in RFC 3339 or ISO 8601 format
+            - type: integer
+              description: UNIX timestamp in seconds
+            - type: number
+              description: UNIX timestamp with fractional seconds
+          example: "2025-01-15T10:30:00Z"
+      additionalProperties: true
+      example:
+        message: "API request processed"
+        level: "info"
+        method: "POST"
+        path: "/api/users"
+        duration_ms: 234
+        user_id: "user_12345"
+        dt: "2025-01-15T10:30:00Z"
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message describing what went wrong
+          example: "Invalid request format"
+        details:
+          type: string
+          description: Additional error details
+          example: "The request body contains invalid JSON"
+
+    SourceListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          description: Array of source objects
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                description: Unique identifier for the source
+                example: "src_12345abcdef"
+              type:
+                type: string
+                description: Resource type
+                example: "source"
+              attributes:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: Human-readable name of the source
+                    example: "Production API Logs"
+                  platform:
+                    type: string
+                    description: The platform type of the source
+                    example: "http"
+                  token:
+                    type: string
+                    description: Source token for log ingestion
+                    example: "source_token_abcdef123456"
+                  created_at:
+                    type: string
+                    format: date-time
+                    description: Source creation timestamp
+                    example: "2025-01-15T10:30:00Z"
+                  updated_at:
+                    type: string
+                    format: date-time
+                    description: Source last update timestamp
+                    example: "2025-01-15T10:30:00Z"
+        links:
+          type: object
+          description: Pagination links
+          properties:
+            first:
+              type: string
+              description: URL to the first page
+              example: "https://telemetry.betterstack.com/api/v1/sources?page=1"
+            last:
+              type: string
+              description: URL to the last page
+              example: "https://telemetry.betterstack.com/api/v1/sources?page=10"
+            prev:
+              type: string
+              nullable: true
+              description: URL to the previous page (null if on first page)
+              example: "https://telemetry.betterstack.com/api/v1/sources?page=1"
+            next:
+              type: string
+              nullable: true
+              description: URL to the next page (null if on last page)
+              example: "https://telemetry.betterstack.com/api/v1/sources?page=3"
+
+    SourceGroupListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          description: Array of source group objects
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                description: Unique identifier for the source group
+                example: "grp_12345abcdef"
+              type:
+                type: string
+                description: Resource type
+                example: "source_group"
+              attributes:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    description: Source group ID
+                    example: "grp_12345abcdef"
+                  name:
+                    type: string
+                    description: Human-readable name of the source group
+                    example: "Production Sources"
+                  created_at:
+                    type: string
+                    format: date-time
+                    description: Source group creation timestamp
+                    example: "2025-01-15T10:30:00Z"
+                  updated_at:
+                    type: string
+                    format: date-time
+                    description: Source group last update timestamp
+                    example: "2025-01-15T10:30:00Z"
+                  sort_index:
+                    type: integer
+                    description: Sort order index for the source group
+                    example: 1
+                  team_name:
+                    type: string
+                    description: Name of the team that owns this source group
+                    example: "production-team"
+        links:
+          type: object
+          description: Pagination links
+          properties:
+            first:
+              type: string
+              description: URL to the first page
+              example: "https://telemetry.betterstack.com/api/v1/source-groups?page=1"
+            last:
+              type: string
+              description: URL to the last page
+              example: "https://telemetry.betterstack.com/api/v1/source-groups?page=5"
+            prev:
+              type: string
+              nullable: true
+              description: URL to the previous page (null if on first page)
+              example: "https://telemetry.betterstack.com/api/v1/source-groups?page=1"
+            next:
+              type: string
+              nullable: true
+              description: URL to the next page (null if on last page)
+              example: "https://telemetry.betterstack.com/api/v1/source-groups?page=3"
+
+    MetricListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          description: Array of metric objects
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                description: Unique identifier for the metric
+                example: "mtr_12345abcdef"
+              type:
+                type: string
+                description: Resource type
+                example: "metric"
+              attributes:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: Name of the metric
+                    example: "response_time_ms"
+                  sql_expression:
+                    type: string
+                    description: SQL expression used to calculate this metric
+                    example: "AVG(response_time_ms)"
+                  aggregations:
+                    type: array
+                    description: Available aggregation methods for this metric
+                    items:
+                      type: string
+                    example: ["avg", "min", "max", "p95", "p99"]
+                  type:
+                    type: string
+                    description: Data type of the metric
+                    enum:
+                      - string_low_cardinality
+                      - int64_delta
+                      - float64_delta
+                      - datetime64_delta
+                      - boolean
+                    example: "float64_delta"
+                  created_at:
+                    type: string
+                    format: date-time
+                    description: Metric creation timestamp
+                    example: "2025-01-15T10:30:00Z"
+                  updated_at:
+                    type: string
+                    format: date-time
+                    description: Metric last update timestamp
+                    example: "2025-01-15T10:30:00Z"
+        links:
+          type: object
+          description: Pagination links
+          properties:
+            first:
+              type: string
+              description: URL to the first page
+              example: "https://telemetry.betterstack.com/api/v2/sources/src_12345/metrics?page=1"
+            last:
+              type: string
+              description: URL to the last page
+              example: "https://telemetry.betterstack.com/api/v2/sources/src_12345/metrics?page=3"
+            prev:
+              type: string
+              nullable: true
+              description: URL to the previous page (null if on first page)
+              example: null
+            next:
+              type: string
+              nullable: true
+              description: URL to the next page (null if on last page)
+              example: "https://telemetry.betterstack.com/api/v2/sources/src_12345/metrics?page=2"
+
+  responses:
+    Unauthorized:
+      description: Authentication required or invalid token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missing_auth:
+              summary: Missing authorization header
+              value:
+                error: "Authorization header required"
+            invalid_token:
+              summary: Invalid API token
+              value:
+                error: "Invalid or expired API token"
+
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missing_required:
+              summary: Missing required field
+              value:
+                error: "Missing required field: name"
+            invalid_platform:
+              summary: Invalid platform value
+              value:
+                error: "Invalid platform. Must be one of: http, nginx, docker, etc."
+
+tags:
+  - name: Sources
+    description: Operations for managing log sources
+  - name: Source Groups
+    description: Operations for managing source groups
+  - name: Metrics
+    description: Operations for retrieving metrics from sources
+  - name: Log Ingestion
+    description: Operations for ingesting log data
+
+externalDocs:
+  description: Better Stack Telemetry Documentation
+  url: https://betterstack.com/docs/logs/
